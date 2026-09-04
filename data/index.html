@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DeskLight &ndash; Lysstyring</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="card">
+  <h1>&#128161; DeskLight</h1>
+  <div class="sub" id="status">Forbinder&hellip;</div>
+
+  <div class="modes">
+    <button data-mode="off">Sluk</button>
+    <button data-mode="solid" class="active">Farve</button>
+    <button data-mode="rainbow">Regnbue</button>
+    <button data-mode="beat">Beat</button>
+  </div>
+
+  <div class="field" id="color-field">
+    <label for="color">Farve</label>
+    <input type="color" id="color" value="#6a0a7f">
+  </div>
+
+  <div class="field">
+    <label for="brightness">Lysstyrke <span id="brightness-val">80 %</span></label>
+    <input type="range" id="brightness" min="0" max="100" value="80">
+  </div>
+
+  <div class="field" id="bpm-field" hidden>
+    <label for="bpm">Tempo (BPM) <span id="bpm-val">124</span></label>
+    <input type="range" id="bpm" min="60" max="200" value="124">
+    <div class="pulse-wrap"><div class="pulse" id="pulse"></div></div>
+  </div>
+</div>
+<script src="/app.js"></script>
+</body>
+</html>
