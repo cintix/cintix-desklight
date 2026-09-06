@@ -6,7 +6,12 @@ PlatformIO (Arduino) firmware for a desk light built on an ESP32-C3 Super Mini. 
 
 ## Project Structure & Module Organization
 
-- `src/` — firmware logic only (HTTP endpoints + effects): `main.cpp`, `Lights.h`, `Lights.cpp`
+- `src/` — feature modules (modular-hybrid architecture) + a thin runtime:
+  - `src/main.cpp` — runtime only: boots and composes the modules, owns the main loop
+  - `src/lighting/` — `Lighting.h/.cpp`: owns the LED strip, effects, settings state and persistence (`/config.json`)
+  - `src/network/` — `Network.h/.cpp`: owns WiFi (home network + always-on fallback AP), mDNS and reconnection
+  - `src/web/` — `Web.h/.cpp`: owns the HTTP server, static UI files and JSON API (`/api/state`, `/api/control`)
+  - Public contract lives in each module's header; implementation is hidden in the `.cpp`. Cross-module calls go only through public contracts (Web → Lighting/Network); `main.cpp` holds no business logic.
 - `data/` — LittleFS web frontend: `index.html`, `style.css`, `app.js`. Edit here for UI changes; no HTML/CSS/JS in C++ code
 - `include/` — `config.h` (git-ignored) with WiFi credentials and hardware settings; `config.example.h` documents it
 - `lib/`, `test/` — private libraries and PlatformIO unit tests (currently unused)
