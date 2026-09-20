@@ -92,6 +92,7 @@ input[type="range"]::-moz-range-thumb{
   cursor:pointer;
 }
 .pulse-wrap{display:flex;justify-content:center;padding:14px 0 4px}
+.pulse.idle{animation:none;opacity:.45}
 .pulse{
   width:58px;
   height:58px;
@@ -104,3 +105,37 @@ input[type="range"]::-moz-range-thumb{
   8%{transform:scale(1.12);box-shadow:0 0 34px 4px var(--pulse-glow,rgba(180,76,255,.5))}
   100%{transform:scale(.72);box-shadow:0 0 0 0 rgba(255,255,255,0)}
 }
+.sub.nohost{color:#ffcf6b}
+.toggle-field{display:flex;align-items:flex-start;gap:10px;margin-bottom:0}
+.toggle-field input[type="checkbox"]{
+  appearance:none;
+  -webkit-appearance:none;
+  flex:0 0 auto;
+  width:42px;
+  height:24px;
+  margin:0;
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:12px;
+  background:rgba(255,255,255,.06);
+  position:relative;
+  cursor:pointer;
+  transition:all .15s ease;
+}
+.toggle-field input[type="checkbox"]::after{
+  content:"";
+  position:absolute;
+  top:2px;
+  left:2px;
+  width:18px;
+  height:18px;
+  border-radius:50%;
+  background:var(--muted);
+  transition:all .15s ease;
+}
+.toggle-field input[type="checkbox"]:checked{
+  background:linear-gradient(135deg,var(--accent),var(--accent-2));
+  border-color:transparent;
+}
+.toggle-field input[type="checkbox"]:checked::after{left:20px;background:#fff}
+.toggle-field label{display:block;font-size:13px;color:var(--text);cursor:pointer}
+.toggle-field .hint{display:block;margin-top:2px;font-size:12px;color:var(--muted)}

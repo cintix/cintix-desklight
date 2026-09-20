@@ -10,11 +10,17 @@ API (kept identical to the old on-device API so data/app.js is unchanged
 in spirit):
   GET  /              -> data/index.html (+ static files from data/)
   GET  /api/state     -> current lamp state + connection flag
-  POST /api/control   -> form- or JSON-encoded {mode,color,brightness,bpm}
+  POST /api/control   -> form- or JSON-encoded {mode,color,brightness,bpm,
+                         alwaysOn}
 
 Serial protocol (newline-delimited JSON @115200 baud):
   host -> lamp: {"get":true} or a partial/full state set
-  lamp -> host: {"mode":...,"color":"#rrggbb","brightness":...,"bpm":...}
+  lamp -> host: {"mode":...,"color":"#rrggbb","brightness":...,"bpm":...,
+                 "alwaysOn":...,"host":...}
+
+`host` in the lamp's reply is the lamp's own view of the USB link: false once
+only standby power is left, which is when it keeps the strip dark unless
+`alwaysOn` is set.
 
 Usage:
   python3 host/desklight_service.py [--port /dev/ttyACM0] [--http-port 8805]
@@ -35,9 +41,9 @@ from serial.tools import list_ports
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(ROOT, "data")
 
-CONTROL_KEYS = ("mode", "color", "brightness", "bpm")
+CONTROL_KEYS = ("mode", "color", "brightness", "bpm", "alwaysOn")
 DEFAULT_STATE = {"mode": "solid", "color": "#6a0a7f",
-                 "brightness": 80, "bpm": 124}
+                 "brightness": 80, "bpm": 60, "alwaysOn": False}
 CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
     ".css": "text/css; charset=utf-8",
@@ -78,6 +84,7 @@ class LampLink:
         self.lock = threading.Lock()
         self.state = {}
         self.connected = False
+        self.host_present = False  # the lamp's view of the USB link
         self.last_seen = 0.0
         self._stop = False
         self._thread = threading.Thread(target=self._run, daemon=True)
@@ -89,6 +96,7 @@ class LampLink:
             st = dict(DEFAULT_STATE)
             st.update(self.state)
             st["connected"] = self.connected
+            st["host"] = self.host_present
             return st
 
     def send(self, obj):
@@ -110,6 +118,10 @@ class LampLink:
                 return int(value)
             except (TypeError, ValueError):
                 return value
+        if key == "alwaysOn":
+            if isinstance(value, str):
+                return value.strip().lower() in ("true", "1", "on")
+            return bool(value)
         return str(value)
 
     def wait_ack(self, expected, timeout=1.2):
@@ -156,6 +168,7 @@ class LampLink:
                 pass
             self.ser = None
         self.connected = False
+        self.host_present = False
         self.last_seen = 0.0
 
     def _handle_line(self, raw):
@@ -168,9 +181,11 @@ class LampLink:
             return
         with self.lock:
             self.state = {k: obj[k] for k in CONTROL_KEYS if k in obj}
+            if "host" in obj:
+                self.host_present = bool(obj["host"])
             self.last_seen = time.monotonic()
             self.connected = True
-        print(f"[serial] state <- {self.state}")
+        print(f"[serial] state <- {self.state} host={self.host_present}")
 
     def _run(self):
         buf = b""
@@ -282,6 +297,8 @@ class Handler(BaseHTTPRequestHandler):
                         value = int(value)
                     except ValueError:
                         continue  # invalid number: leave the field unchanged
+                elif key == "alwaysOn":
+                    value = value.strip().lower() in ("true", "1", "on")
                 updates[key] = value
         cmd = {k: updates[k] for k in CONTROL_KEYS if k in updates}
         if cmd:

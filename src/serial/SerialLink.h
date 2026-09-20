@@ -7,14 +7,15 @@
 #ifndef SerialLink_h
 #define SerialLink_h
 
+class Host;
 class Lighting;
 
 class SerialLink {
 public:
     SerialLink();
 
-    void begin(Lighting& lights);  // bind the module it controls
-    void update();                 // read + apply pending serial commands
+    void begin(Lighting& lights, Host& host);  // bind the modules it serves
+    void update();                             // read + apply pending serial commands
 
 private:
     void sendState();              // report current state as a JSON line

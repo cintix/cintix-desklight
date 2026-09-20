@@ -29,9 +29,17 @@
   </div>
 
   <div class="field" id="bpm-field" hidden>
-    <label for="bpm">Tempo (BPM) <span id="bpm-val">124</span></label>
-    <input type="range" id="bpm" min="60" max="200" value="124">
+    <label for="bpm">Tempo (BPM) <span id="bpm-val">60</span></label>
+    <input type="range" id="bpm" min="0" max="100" value="60">
     <div class="pulse-wrap"><div class="pulse" id="pulse"></div></div>
+  </div>
+
+  <div class="field toggle-field">
+    <input type="checkbox" id="always-on">
+    <label for="always-on">
+      Altid t&aelig;ndt
+      <span class="hint">T&aelig;nder lyset selv om PC'en er slukket</span>
+    </label>
   </div>
 </div>
 <script src="/app.js"></script>

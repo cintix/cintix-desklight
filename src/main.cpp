@@ -1,6 +1,7 @@
 // DeskLight runtime - composes the feature modules and owns the main loop.
 // No business logic lives here; each capability is owned by its module:
 //   lighting/ - LED strip, effects and settings persistence (LittleFS)
+//   host/     - the USB link to the host PC (is it still switched on?)
 //   serial/   - USB serial control channel used by the host service
 //
 // The network/ and web/ modules are intentionally NOT used right now: the
@@ -9,10 +10,12 @@
 #include <Arduino.h>
 #include <LittleFS.h>
 
+#include "host/Host.h"
 #include "lighting/Lighting.h"
 #include "serial/SerialLink.h"
 
 static Lighting lights;
+static Host host;
 static SerialLink serialLink;
 
 void setup()
@@ -25,14 +28,17 @@ void setup()
         Serial.println("LittleFS mount failed");
     }
 
-    lights.begin();  // loads persisted settings and lights the LEDs at once
-    serialLink.begin(lights);
+    host.begin();      // watches for a live host PC on the USB link
+    lights.begin();    // loads persisted settings; strip stays dark until the host is seen
+    serialLink.begin(lights, host);
 
     Serial.println("DeskLight ready - JSON commands over USB serial.");
 }
 
 void loop()
 {
-    serialLink.update();          // apply commands sent by the host service
+    host.update();                            // notice the host PC going away
+    serialLink.update();                      // apply commands sent by the host service
+    lights.setHostPresent(host.isPresent());  // dark once only standby power is left
     lights.update(millis());
 }

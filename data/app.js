@@ -1,7 +1,7 @@
 (function () {
   "use strict";
   var $ = function (id) { return document.getElementById(id); };
-  var state = { mode: "solid", color: "#6a0a7f", brightness: 80, bpm: 124 };
+  var state = { mode: "solid", color: "#6a0a7f", brightness: 80, bpm: 60, alwaysOn: false };
   var sending = false;
   var timer = null;
   var changedAt = 0;  // last local change - avoids fights with the poll
@@ -27,22 +27,45 @@
     $("bpm").value = state.bpm;
     $("bpm-val").textContent = state.bpm;
     $("bpm-field").hidden = (state.mode !== "beat");
+    // Guarded: a browser holding a cached page from before this field existed
+    // would otherwise throw here, and every handler calls applyUi() *before*
+    // send() - so a missing checkbox would silently stop all saving.
+    if ($("always-on")) $("always-on").checked = !!state.alwaysOn;
     $("pulse").style.setProperty("--pulse-color", state.color);
     $("pulse").style.setProperty("--pulse-glow", hexToGlow(state.color));
-    $("pulse").style.setProperty("--beat-ms", Math.round(60000 / state.bpm) + "ms");
+    // 0 BPM is the slider's minimum and means "no tempo": the lamp holds a
+    // steady faint glow, so the preview stops throbbing too. Guarded because
+    // 60000/0 is Infinity, which is not a usable CSS duration.
+    if (state.bpm > 0) {
+      $("pulse").style.setProperty("--beat-ms", Math.round(60000 / state.bpm) + "ms");
+      $("pulse").classList.remove("idle");
+    } else {
+      $("pulse").classList.add("idle");
+    }
   }
 
-  function setStatus(connected) {
+  function setStatus(connected, host, alwaysOn) {
     var el = $("status");
     el.classList.toggle("online", connected);
-    el.textContent = connected
-      ? "Lampen er tilsluttet via USB"
-      : "Ingen forbindelse til lampen";
+    // Reachable over USB but dark because the lamp sees no live host PC - that
+    // is not the same as having lost the lamp, so it gets its own wording.
+    el.classList.toggle("nohost", connected && host === false && !alwaysOn);
+    if (!connected) {
+      el.textContent = "Ingen forbindelse til lampen";
+      return;
+    }
+    var text = "Lampen er tilsluttet via USB";
+    if (host === false) {
+      text += alwaysOn ? " • Ingen PC (altid tændt)"
+                       : " • Ingen PC – lyset er slukket";
+    }
+    el.textContent = text;
   }
 
   function setOffline() {
     var el = $("status");
     el.classList.remove("online");
+    el.classList.remove("nohost");
     el.textContent = "Ingen forbindelse til tjenesten";
   }
 
@@ -53,6 +76,7 @@
     if (d.color) state.color = d.color;
     if (typeof d.brightness === "number") state.brightness = d.brightness;
     if (typeof d.bpm === "number") state.bpm = d.bpm;
+    if (typeof d.alwaysOn === "boolean") state.alwaysOn = d.alwaysOn;
     if (JSON.stringify(state) !== before) applyUi();
   }
 
@@ -61,7 +85,7 @@
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (!d) return;
-        setStatus(!!d.connected);
+        setStatus(!!d.connected, d.host, !!d.alwaysOn);
         if (!sending && Date.now() - changedAt > 300) applyRemote(d);
       })
       .catch(function () { setOffline(); });
@@ -81,7 +105,7 @@
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (!d) return;
-        setStatus(!!d.connected);
+        setStatus(!!d.connected, d.host, !!d.alwaysOn);
         if (d.connected) applyRemote(d);
       })
       .catch(function () { setOffline(); })
@@ -111,6 +135,13 @@
     applyUi();
     queueSend();
   });
+  if ($("always-on")) {
+    $("always-on").addEventListener("change", function () {
+      state.alwaysOn = this.checked;
+      applyUi();
+      send();
+    });
+  }
 
   refresh();
   setInterval(refresh, 2000);

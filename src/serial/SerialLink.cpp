@@ -2,6 +2,7 @@
 #include <ArduinoJson.h>
 
 #include "SerialLink.h"
+#include "host/Host.h"
 #include "lighting/Lighting.h"
 
 // ---------------------------------------------------------------------------
@@ -10,8 +11,8 @@
 // Newline-delimited JSON over the USB CDC serial port:
 //   host -> lamp: {"get":true}                       request current state
 //   host -> lamp: {"mode":"solid","color":"#ff0000", ...}  set any fields
-//   lamp -> host: {"mode":...,"color":"#rrggbb",
-//                  "brightness":...,"bpm":...}       reply after each cmd
+//   lamp -> host: {"mode":...,"color":"#rrggbb","brightness":...,
+//                  "bpm":...,"alwaysOn":...,"host":...}  reply after each cmd
 // ---------------------------------------------------------------------------
 namespace {
 
@@ -40,6 +41,7 @@ bool parseHexColor(const String& s, uint32_t& rgb) {
 
 struct SerialLink::Impl {
     Lighting* lights = nullptr;
+    Host*     host = nullptr;
     char      line[SERIAL_LINE_MAX];
     size_t    lineLen = 0;
     bool      discardLine = false;
@@ -47,8 +49,9 @@ struct SerialLink::Impl {
 
 SerialLink::SerialLink() : impl_(new Impl) {}
 
-void SerialLink::begin(Lighting& lights) {
+void SerialLink::begin(Lighting& lights, Host& host) {
     impl_->lights = &lights;
+    impl_->host = &host;
 }
 
 // Report the current lighting state as a single JSON line.
@@ -57,7 +60,10 @@ void SerialLink::sendState() {
     String out = String("{\"mode\":\"") + s.mode +
                  "\",\"color\":\"" + colorHex(s.color) +
                  "\",\"brightness\":" + String(s.brightness) +
-                 ",\"bpm\":" + String(s.bpm) + "}";
+                 ",\"bpm\":" + String(s.bpm) +
+                 ",\"alwaysOn\":" + (s.alwaysOn ? "true" : "false") +
+                 ",\"host\":" +
+                 (impl_->host->isPresent() ? "true" : "false") + "}";
     Serial.println(out);
 }
 
@@ -91,6 +97,18 @@ void SerialLink::handleLine(const char* line) {
     }
     if (doc["bpm"].is<int>()) {
         lights.setBpm((uint8_t)doc["bpm"].as<int>());
+    }
+    // A checkbox arrives either as a JSON bool or as the "true"/"on" a form
+    // post round-trips to, so both spellings are accepted.
+    if (!doc["alwaysOn"].isNull()) {
+        if (doc["alwaysOn"].is<bool>()) {
+            lights.setAlwaysOn(doc["alwaysOn"].as<bool>());
+        } else if (doc["alwaysOn"].is<const char*>()) {
+            String v = doc["alwaysOn"].as<const char*>();
+            v.trim();
+            v.toLowerCase();
+            lights.setAlwaysOn(v == "true" || v == "1" || v == "on");
+        }
     }
 
     // Always answer with the (new) state: the host uses the reply as its ack

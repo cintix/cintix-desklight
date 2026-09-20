@@ -67,8 +67,12 @@ struct Lighting::Impl {
     Mode    mode = Mode::Solid;
     CRGB    color = CRGB(0x6a, 0x0a, 0x7f);  // default purple
     uint8_t brightnessPct = 80;              // 0..100
-    uint8_t bpm = 124;                       // beats per minute
+    uint8_t bpm = 60;                        // beats per minute (0..100)
     uint8_t hue = 0;
+
+    bool     hostPresent = false;  // a host PC is driving the USB link
+    bool     alwaysOn = false;     // override: ignore host absence
+    bool     dark = true;          // LEDs currently forced off
 
     uint32_t lastFrameMs = 0;
 
@@ -93,11 +97,8 @@ void Lighting::begin() {
     FastLED.show();
 
     loadConfig();
-
-    // The light is on from the moment the firmware boots; it does not
-    // wait for the network. (An Off mode from the persisted config
-    // keeps the strip dark, as the user last chose.)
-    render();
+    // The strip stays dark until update() sees a host PC on the USB link (or
+    // the alwaysOn override), so booting never flashes the light.
 }
 
 // ---------------------------------------------------------------------------
@@ -124,11 +125,13 @@ void Lighting::loadConfig() {
     CRGB c;
     if (parseHexColor(doc["color"] | "#6a0a7f", c)) m->color = c;
     m->brightnessPct = (uint8_t)constrain((int)(doc["brightness"] | 80), 0, 100);
-    m->bpm = (uint8_t)constrain((int)(doc["bpm"] | 124), 60, 200);
+    m->bpm = (uint8_t)constrain((int)(doc["bpm"] | 60), 0, 100);
+    m->alwaysOn = doc["alwaysOn"] | false;
 
-    Serial.printf("Config loaded: mode=%s color=%s brightness=%d bpm=%d\n",
+    Serial.printf("Config loaded: mode=%s color=%s brightness=%d bpm=%d "
+                  "alwaysOn=%d\n",
                   modeName(m->mode), colorHex(m->color).c_str(),
-                  m->brightnessPct, m->bpm);
+                  m->brightnessPct, m->bpm, m->alwaysOn);
 }
 
 void Lighting::saveConfig() {
@@ -138,6 +141,7 @@ void Lighting::saveConfig() {
     doc["color"] = colorHex(m->color);
     doc["brightness"] = m->brightnessPct;
     doc["bpm"] = m->bpm;
+    doc["alwaysOn"] = m->alwaysOn;
 
     String out;
     serializeJson(doc, out);
@@ -157,6 +161,14 @@ void Lighting::saveConfig() {
 // ---------------------------------------------------------------------------
 void Lighting::renderBeat(uint32_t now) {
     Impl* m = impl_;
+    // 0 BPM is a valid setting (the bottom of the slider): there is no tempo to
+    // divide by, and with no beats the effect sits at its quiet point, which is
+    // fully dark.
+    if (m->bpm == 0) {
+        FastLED.clear();
+        FastLED.show();
+        return;
+    }
     const uint32_t intervalMs = 60000u / m->bpm;  // ms per quarter note
 
     if (m->lastKickMs == 0) m->lastKickMs = now;
@@ -170,7 +182,16 @@ void Lighting::renderBeat(uint32_t now) {
     // Off-beat accent at p ~ 0.5 for a pumping, dance-floor feel.
     const float off = 0.55f * expf(-powf((p - 0.5f) * 8.0f, 2.0f));
     const float env = fmaxf(kick, off);
-    const float level = 0.05f + 0.95f * env;  // a faint glow between beats
+    const float level = 0.95f * env;
+
+    // Between beats the envelope reaches zero. Snap to a real off instead of
+    // scaling down to a few percent: at that level a WS2812B still glows in a
+    // dark room, and its colour drifts at the bottom of the range.
+    if (level < 0.03f) {
+        FastLED.clear();
+        FastLED.show();
+        return;
+    }
 
     FastLED.setBrightness((uint8_t)(brightness255() * level));
     fill_solid(m->leds, LED_COUNT, m->color);
@@ -217,9 +238,19 @@ void Lighting::update(uint32_t nowMs) {
         saveConfig();
     }
 
-    if (nowMs - m->lastFrameMs >= 16) {  // ~60 fps
-        m->lastFrameMs = nowMs;
-        render();
+    // Light gating: the strip runs while a host PC is actually driving the USB
+    // link - unless the override is set. A switched off PC leaves 5 V on VBUS
+    // but no host, so the strip stays dark instead of burning all night.
+    if (m->hostPresent || m->alwaysOn) {
+        m->dark = false;
+        if (nowMs - m->lastFrameMs >= 16) {  // ~60 fps
+            m->lastFrameMs = nowMs;
+            render();
+        }
+    } else if (!m->dark) {
+        m->dark = true;
+        FastLED.clear();
+        FastLED.show();
     }
 }
 
@@ -253,9 +284,20 @@ void Lighting::setBrightness(uint8_t pct) {
 
 void Lighting::setBpm(uint8_t bpm) {
     Impl* m = impl_;
-    const uint8_t b = (uint8_t)constrain((int)bpm, 60, 200);
+    const uint8_t b = (uint8_t)constrain((int)bpm, 0, 100);
     if (b == m->bpm) return;
     m->bpm = b;
+    m->markDirty();
+}
+
+void Lighting::setHostPresent(bool present) {
+    impl_->hostPresent = present;
+}
+
+void Lighting::setAlwaysOn(bool on) {
+    Impl* m = impl_;
+    if (on == m->alwaysOn) return;
+    m->alwaysOn = on;
     m->markDirty();
 }
 
@@ -266,5 +308,6 @@ LightingState Lighting::state() const {
     s.color = rgbToUint32(m->color);
     s.brightness = m->brightnessPct;
     s.bpm = m->bpm;
+    s.alwaysOn = m->alwaysOn;
     return s;
 }
