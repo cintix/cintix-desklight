@@ -25,6 +25,7 @@ private:
     void printScan();
 
     bool     online_ = false;
+    bool     mdnsStarted_ = false;  // the responder survives a reconnect
     uint32_t lastProbeMs_ = 0;
 };
 #endif

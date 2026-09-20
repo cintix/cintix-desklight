@@ -26,8 +26,13 @@ void Network::startAccessPoint() {
 // point stays on as a permanent fallback.
 void Network::joinStation() {
     online_ = true;
-    if (MDNS.begin(HOSTNAME)) {
+    // Set mDNS up once. This runs again on every reconnect, and a second
+    // begin() would leave the first responder (and its service list) in place,
+    // so addService() then fails with "Failed adding service http.tcp" while
+    // the connection itself looks fine.
+    if (!mdnsStarted_ && MDNS.begin(HOSTNAME)) {
         MDNS.addService("http", "tcp", 80);
+        mdnsStarted_ = true;
         Serial.printf("mDNS: http://%s.local\n", HOSTNAME);
     }
     Serial.printf("Connected. IP: %s  (RSSI: %d dBm)\n",

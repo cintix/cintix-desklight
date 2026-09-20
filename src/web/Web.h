@@ -26,6 +26,7 @@ private:
     // Internal request handling (Web.cpp).
     void handleRoot();
     void handleState();
+    void handleDebug();  // diagnostics endpoint
     void handleControl();
     void handleNotFound();
     bool serveFile(const String& path);

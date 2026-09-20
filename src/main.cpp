@@ -41,7 +41,7 @@ void loop() {
     gNetwork.update();                          // keep the home-net link healthy
     gHost.update();                             // notice the host PC going away
     gWeb.handle();                              // serve the web UI / API
-    gLights.setOnline(gNetwork.isOnline());     // LEDs on = online indicator
+    gLights.setOnline(gNetwork.isOnline());     // a WiFi drop only blinks amber
     gLights.setHostPresent(gHost.isPresent());  // dark once only standby power is left
     gLights.update(millis());
 }

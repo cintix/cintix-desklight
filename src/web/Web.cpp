@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <WebServer.h>
 #include <LittleFS.h>
+#include <esp_system.h>
 
 #include "host/Host.h"
 #include "lighting/Lighting.h"
@@ -49,6 +50,23 @@ bool Web::parseBool(const String& s) {
     v.trim();
     v.toLowerCase();
     return v == "true" || v == "1" || v == "on";
+}
+
+// Diagnostics.
+static const char* resetReasonName(esp_reset_reason_t reason) {
+    switch (reason) {
+        case ESP_RST_POWERON:   return "poweron";
+        case ESP_RST_EXT:       return "external";
+        case ESP_RST_SW:        return "software";
+        case ESP_RST_PANIC:     return "panic";
+        case ESP_RST_INT_WDT:   return "int_wdt";
+        case ESP_RST_TASK_WDT:  return "task_wdt";
+        case ESP_RST_WDT:       return "wdt";
+        case ESP_RST_DEEPSLEEP: return "deepsleep";
+        case ESP_RST_BROWNOUT:  return "brownout";
+        case ESP_RST_SDIO:      return "sdio";
+        default:                return "unknown";
+    }
 }
 
 String Web::contentTypeFor(const String& path) const {
@@ -102,6 +120,60 @@ void Web::handleState() {
     impl_->server->send(200, "application/json", stateJson());
 }
 
+// Raw USB signals plus the gating inputs, so it can be seen whether the strip
+// *should* be able to light. Served over WiFi on purpose: the serial link is
+// exactly what is in doubt when host detection misbehaves.
+void Web::handleDebug() {
+    const bool online = impl_->network->isOnline();
+    const bool host = impl_->host->isPresent();
+    const LightingState s = impl_->lighting->state();
+    const bool shouldRun = online && (host || s.alwaysOn);
+
+    const bool configExists = LittleFS.exists("/config.json");
+    size_t configSize = 0;
+    if (configExists) {
+        File file = LittleFS.open("/config.json", "r");
+        if (file) {
+            configSize = file.size();
+            file.close();
+        }
+    }
+
+    char rawHex[16];
+    snprintf(rawHex, sizeof(rawHex), "0x%08x", (unsigned)impl_->host->usbIntRaw());
+    char enaHex[16];
+    snprintf(enaHex, sizeof(enaHex), "0x%08x", (unsigned)impl_->host->usbIntEna());
+
+    String out = "{";
+    out += "\"uptime_ms\":" + String(millis()) + ",";
+    out += "\"free_heap\":" + String(ESP.getFreeHeap()) + ",";
+    out += "\"reset_reason\":\"" +
+           String(resetReasonName(esp_reset_reason())) + "\",";
+    out += "\"host\":{";
+    out += "\"present\":" + String(host ? "true" : "false") + ",";
+    out += "\"plugged_now\":" +
+           String(impl_->host->pluggedNow() ? "true" : "false") + ",";
+    out += "\"sof_index\":" + String(impl_->host->sofIndex()) + ",";
+    out += "\"sof_moving\":" +
+           String(impl_->host->sofMoving() ? "true" : "false") + ",";
+    out += "\"int_raw\":\"" + String(rawHex) + "\",";
+    out += "\"int_ena\":\"" + String(enaHex) + "\"";
+    out += "},";
+    out += "\"gate\":{";
+    out += "\"online\":" + String(online ? "true" : "false") + ",";
+    out += "\"host_present\":" + String(host ? "true" : "false") + ",";
+    out += "\"always_on\":" + String(s.alwaysOn ? "true" : "false") + ",";
+    out += "\"should_run\":" + String(shouldRun ? "true" : "false");
+    out += "},";
+    out += "\"config\":{";
+    out += "\"exists\":" + String(configExists ? "true" : "false") + ",";
+    out += "\"size\":" + String((unsigned)configSize);
+    out += "}";
+    out += "}";
+
+    impl_->server->send(200, "application/json", out);
+}
+
 void Web::handleControl() {
     WebServer& s = *impl_->server;
     Lighting&  l = *impl_->lighting;
@@ -124,6 +196,14 @@ void Web::handleControl() {
     if (s.hasArg("alwaysOn")) {
         l.setAlwaysOn(parseBool(s.arg("alwaysOn")));
     }
+
+    // Diagnostics: show what the UI actually sent. The cheapest way to tell a
+    // UI that is not sending apart from a firmware that is not saving.
+    Serial.printf("Control: mode='%s' color='%s' brightness='%s' bpm='%s' "
+                  "alwaysOn='%s'\n",
+                  s.arg("mode").c_str(), s.arg("color").c_str(),
+                  s.arg("brightness").c_str(), s.arg("bpm").c_str(),
+                  s.arg("alwaysOn").c_str());
 
     s.send(200, "application/json", stateJson());
 }
@@ -149,6 +229,7 @@ void Web::begin(Lighting& lights, Network& network, Host& host) {
     s.on("/", HTTP_GET, [this] { handleRoot(); });
     s.on("/index.html", HTTP_GET, [this] { handleRoot(); });
     s.on("/api/state", HTTP_GET, [this] { handleState(); });
+    s.on("/api/debug", HTTP_GET, [this] { handleDebug(); });
     s.on("/api/control", HTTP_POST, [this] { handleControl(); });
     s.onNotFound([this] { handleNotFound(); });
     s.begin();

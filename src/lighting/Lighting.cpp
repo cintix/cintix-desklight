@@ -15,6 +15,13 @@ namespace {
 
 const char CONFIG_PATH[] = "/config.json";
 
+// A WiFi drop no longer darkens the strip - the desk light follows the PC, not
+// the router - but the supervision in Network is still worth announcing, so a
+// short amber blink says something is wrong before rendering resumes.
+const uint32_t FAULT_BLINK_MS = 2000;
+const uint32_t FAULT_BLINK_PERIOD_MS = 250;    // on/off half-period
+const CRGB     FAULT_COLOR(0xff, 0x8c, 0x00);  // amber
+
 enum class Mode : uint8_t { Off = 0, Solid, Rainbow, Beat };
 
 const char* modeName(Mode mode) {
@@ -70,10 +77,11 @@ struct Lighting::Impl {
     uint8_t bpm = 124;                       // beats per minute
     uint8_t hue = 0;
 
-    bool     online = false;      // light only runs while online
+    bool     online = false;      // last WiFi state (a drop starts the blink)
     bool     hostPresent = true;  // a host PC is driving the USB link
     bool     alwaysOn = false;    // override: ignore host absence
     bool     dark = true;         // LEDs currently forced off
+    uint32_t faultBlinkUntilMs = 0;  // non-zero while the WiFi-fault blink runs
     uint32_t lastFrameMs = 0;
 
     bool     configDirty = false;
@@ -203,6 +211,19 @@ void Lighting::render() {
     }
 }
 
+// Amber on/off at ~2 Hz. Kept separate from render() so the fault indication
+// cannot be swallowed by whatever effect happens to be selected.
+void Lighting::renderFault(uint32_t now) {
+    Impl* m = impl_;
+    FastLED.setBrightness(brightness255());
+    if (((now / FAULT_BLINK_PERIOD_MS) % 2) == 0) {
+        fill_solid(m->leds, LED_COUNT, FAULT_COLOR);
+    } else {
+        FastLED.clear();
+    }
+    FastLED.show();
+}
+
 uint8_t Lighting::brightness255() const {
     return (uint16_t)impl_->brightnessPct * 255u / 100u;
 }
@@ -211,7 +232,13 @@ uint8_t Lighting::brightness255() const {
 // Public API.
 // ---------------------------------------------------------------------------
 void Lighting::setOnline(bool online) {
-    impl_->online = online;
+    Impl* m = impl_;
+    // Only the drop is interesting. The strip is not gated on WiFi any more, so
+    // the transition is announced with a blink instead of turning the light off.
+    if (m->online && !online) {
+        m->faultBlinkUntilMs = millis() + FAULT_BLINK_MS;
+    }
+    m->online = online;
 }
 
 void Lighting::setHostPresent(bool present) {
@@ -227,15 +254,29 @@ void Lighting::update(uint32_t nowMs) {
         saveConfig();
     }
 
-    // Light gating: the strip runs while online, and - unless the override is
-    // set - only while a host PC is actually driving the USB link. A switched
-    // off PC leaves 5 V on VBUS but no host, so the strip stays dark instead of
-    // burning all night.
-    if (m->online && (m->hostPresent || m->alwaysOn)) {
+    // Light gating: the strip runs while a host PC is actually driving the USB
+    // link - unless the override is set. A switched off PC leaves 5 V on VBUS
+    // but no host, so the strip stays dark instead of burning all night.
+    //
+    // WiFi deliberately has no say here. It used to gate the light as an
+    // "online" indicator, which meant a router hiccup put the desk in the dark
+    // while the PC it is meant to follow was running fine.
+    const bool wanted = m->hostPresent || m->alwaysOn;
+
+    // A fresh WiFi drop gets a blink first. Only when the strip would be lit
+    // anyway - never light up the room just to report the network.
+    const bool faultBlinking = wanted && m->faultBlinkUntilMs != 0 &&
+                               (int32_t)(m->faultBlinkUntilMs - nowMs) > 0;
+
+    if (faultBlinking || wanted) {
         m->dark = false;
         if (nowMs - m->lastFrameMs >= 16) {  // ~60 fps
             m->lastFrameMs = nowMs;
-            render();
+            if (faultBlinking) {
+                renderFault(nowMs);
+            } else {
+                render();
+            }
         }
     } else if (!m->dark) {
         m->dark = true;

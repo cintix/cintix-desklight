@@ -26,7 +26,10 @@
     $("bpm").value = state.bpm;
     $("bpm-val").textContent = state.bpm;
     $("bpm-field").hidden = (state.mode !== "beat");
-    $("always-on").checked = !!state.alwaysOn;
+    // Guarded: a browser holding a cached page from before this field existed
+    // would otherwise throw here, and every handler calls applyUi() *before*
+    // send() - so a missing checkbox would silently stop all saving.
+    if ($("always-on")) $("always-on").checked = !!state.alwaysOn;
     $("pulse").style.setProperty("--pulse-color", state.color);
     $("pulse").style.setProperty("--pulse-glow", hexToGlow(state.color));
     $("pulse").style.setProperty("--beat-ms", Math.round(60000 / state.bpm) + "ms");
@@ -104,11 +107,13 @@
     applyUi();
     queueSend();
   });
-  $("always-on").addEventListener("change", function () {
-    state.alwaysOn = this.checked;
-    applyUi();
-    send();
-  });
+  if ($("always-on")) {
+    $("always-on").addEventListener("change", function () {
+      state.alwaysOn = this.checked;
+      applyUi();
+      send();
+    });
+  }
 
   fetch("/api/state")
     .then(function (r) { return r.json(); })

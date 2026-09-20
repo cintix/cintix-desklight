@@ -22,8 +22,8 @@ public:
     Lighting();
 
     void begin();                      // initialise driver, restore persisted settings
-    void setOnline(bool online);       // LEDs only run while online (indicator)
-    void setHostPresent(bool present); // ...and only while a host PC drives the USB link
+    void setOnline(bool online);       // WiFi state; a drop shows a short amber blink
+    void setHostPresent(bool present); // the strip runs while a host PC drives the USB link
     void update(uint32_t nowMs);       // render + debounced save (~60x/sec)
 
     // Controls. Values are validated/clamped inside the module.
@@ -44,6 +44,7 @@ private:
     void saveConfig();
     void render();
     void renderBeat(uint32_t now);
+    void renderFault(uint32_t now);
     uint8_t brightness255() const;
 };
 #endif
