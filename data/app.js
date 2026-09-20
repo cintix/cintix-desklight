@@ -40,8 +40,8 @@
     // same as having lost the device, so it gets its own wording and colour.
     el.classList.toggle("nohost", host === false && !alwaysOn);
     if (host === false) {
-      text += alwaysOn ? " • Ingen værts-PC (altid tændt)"
-                       : " • Ingen værts-PC – lyset er slukket";
+      text += alwaysOn ? " • Ingen PC (altid tændt)"
+                       : " • Ingen PC – lyset er slukket";
     }
     el.textContent = text;
   }
@@ -51,6 +51,18 @@
     el.classList.remove("online");
     el.classList.remove("nohost");
     el.textContent = "Ingen forbindelse til enheden";
+  }
+
+  // The host can go away while the page sits open, so the status line is polled
+  // on its own. Deliberately touches no settings - a poll must not yank a
+  // slider out from under a finger that is dragging it.
+  function refreshStatus() {
+    fetch("/api/state")
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d && d.ip) setStatus(d.ip, !!d.ap, d.host, !!d.alwaysOn);
+      })
+      .catch(function () { setOffline(); });
   }
 
   function queueSend() {
@@ -111,4 +123,6 @@
       if (d.ip) setStatus(d.ip, !!d.ap, d.host, !!d.alwaysOn);
     })
     .catch(function () { setOffline(); });
+
+  setInterval(refreshStatus, 5000);
 })();
