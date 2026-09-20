@@ -70,8 +70,6 @@ struct Lighting::Impl {
     uint8_t bpm = 124;                       // beats per minute
     uint8_t hue = 0;
 
-    bool     online = false;      // light only runs while online
-    bool     dark = true;         // LEDs currently forced off
     uint32_t lastFrameMs = 0;
 
     bool     configDirty = false;
@@ -95,6 +93,11 @@ void Lighting::begin() {
     FastLED.show();
 
     loadConfig();
+
+    // The light is on from the moment the firmware boots; it does not
+    // wait for the network. (An Off mode from the persisted config
+    // keeps the strip dark, as the user last chose.)
+    render();
 }
 
 // ---------------------------------------------------------------------------
@@ -205,10 +208,6 @@ uint8_t Lighting::brightness255() const {
 // ---------------------------------------------------------------------------
 // Public API.
 // ---------------------------------------------------------------------------
-void Lighting::setOnline(bool online) {
-    impl_->online = online;
-}
-
 void Lighting::update(uint32_t nowMs) {
     Impl* m = impl_;
 
@@ -218,18 +217,9 @@ void Lighting::update(uint32_t nowMs) {
         saveConfig();
     }
 
-    // Light gating: the strip only runs while online, so a dark strip is an
-    // unambiguous "not online" indicator.
-    if (m->online) {
-        m->dark = false;
-        if (nowMs - m->lastFrameMs >= 16) {  // ~60 fps
-            m->lastFrameMs = nowMs;
-            render();
-        }
-    } else if (!m->dark) {
-        m->dark = true;
-        FastLED.clear();
-        FastLED.show();
+    if (nowMs - m->lastFrameMs >= 16) {  // ~60 fps
+        m->lastFrameMs = nowMs;
+        render();
     }
 }
 

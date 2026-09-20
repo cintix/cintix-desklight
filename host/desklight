@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# DeskLight host-webservice launcher.
+# Starts the web UI + serial bridge on http://127.0.0.1:8805 by default.
+# Extra arguments (e.g. --port /dev/ttyACM1, --http-port 9000) are passed on.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+# Brug et python3 der kan importere pyserial (default python3, ellers
+# PlatformIO-venv'et som fallback).
+for py in python3 "$HOME/.platformio/penv/bin/python" python; do
+    if command -v "$py" >/dev/null 2>&1 && "$py" -c "import serial" >/dev/null 2>&1; then
+        exec "$py" host/desklight_service.py "$@"
+    fi
+done
+echo "Fejl: ingen python3 med pyserial fundet. Installér med:" >&2
+echo "  python3 -m pip install pyserial" >&2
+exit 1

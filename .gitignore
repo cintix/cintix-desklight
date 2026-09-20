@@ -6,3 +6,7 @@
 
 # Local WiFi credentials / hardware config
 include/config.h
+
+# Python (host service)
+__pycache__/
+*.pyc

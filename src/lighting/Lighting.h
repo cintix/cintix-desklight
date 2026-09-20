@@ -21,7 +21,6 @@ public:
     Lighting();
 
     void begin();                 // initialise driver, restore persisted settings
-    void setOnline(bool online);  // LEDs only run while online (indicator)
     void update(uint32_t nowMs);  // render + debounced save (~60x/sec)
 
     // Controls. Values are validated/clamped inside the module.

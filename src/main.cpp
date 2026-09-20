@@ -1,41 +1,38 @@
 // DeskLight runtime - composes the feature modules and owns the main loop.
 // No business logic lives here; each capability is owned by its module:
-//   lighting/ - LED strip, effects and settings persistence
-//   network/  - WiFi (home network + fallback AP) and mDNS
-//   web/      - HTTP UI + JSON API
+//   lighting/ - LED strip, effects and settings persistence (LittleFS)
+//   serial/   - USB serial control channel used by the host service
+//
+// The network/ and web/ modules are intentionally NOT used right now: the
+// web UI is hosted by a service on the host PC (host/desklight_service.py)
+// which talks to this firmware over USB serial. The module files are kept.
 #include <Arduino.h>
 #include <LittleFS.h>
-#include <IPAddress.h>
 
 #include "lighting/Lighting.h"
-#include "network/Network.h"
-#include "web/Web.h"
+#include "serial/SerialLink.h"
 
-static Lighting gLights;
-static Network gNetwork;
-static Web gWeb;
+static Lighting lights;
+static SerialLink serialLink;
 
-void setup() {
+void setup()
+{
     Serial.begin(115200);
     delay(100);
-    Serial.println("\nDeskLight booting...");
 
-    if (!LittleFS.begin(true)) {
+    if (!LittleFS.begin(true))
+    {
         Serial.println("LittleFS mount failed");
     }
 
-    gLights.begin();   // loads persisted settings; LEDs stay dark until online
-    gNetwork.begin();  // starts the fallback AP, then joins the home network
-    gWeb.begin(gLights, gNetwork);
+    lights.begin();  // loads persisted settings and lights the LEDs at once
+    serialLink.begin(lights);
 
-    const IPAddress ip = gNetwork.isOnline() ? gNetwork.localIp()
-                                             : gNetwork.apIp();
-    Serial.printf("Open the web UI at http://%s\n", ip.toString().c_str());
+    Serial.println("DeskLight ready - JSON commands over USB serial.");
 }
 
-void loop() {
-    gNetwork.update();                        // keep the home-net link healthy
-    gWeb.handle();                            // serve the web UI / API
-    gLights.setOnline(gNetwork.isOnline());   // LEDs on = online indicator
-    gLights.update(millis());
+void loop()
+{
+    serialLink.update();          // apply commands sent by the host service
+    lights.update(millis());
 }
