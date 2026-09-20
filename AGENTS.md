@@ -10,6 +10,7 @@ PlatformIO (Arduino) firmware for a desk light built on an ESP32-C3 Super Mini. 
   - `src/main.cpp` — runtime only: boots and composes the modules, owns the main loop
   - `src/lighting/` — `Lighting.h/.cpp`: owns the LED strip, effects, settings state and persistence (`/config.json`)
   - `src/network/` — `Network.h/.cpp`: owns WiFi (home network + always-on fallback AP), mDNS and reconnection
+  - `src/host/` — `Host.h/.cpp`: owns the USB link to the host PC, i.e. whether it is still switched on
   - `src/web/` — `Web.h/.cpp`: owns the HTTP server, static UI files and JSON API (`/api/state`, `/api/control`)
   - Public contract lives in each module's header; implementation is hidden in the `.cpp`. Cross-module calls go only through public contracts (Web → Lighting/Network); `main.cpp` holds no business logic.
 - `data/` — LittleFS web frontend: `index.html`, `style.css`, `app.js`. Edit here for UI changes; no HTML/CSS/JS in C++ code
@@ -39,7 +40,7 @@ Firmware and filesystem are separate: after changing `data/`, run `uploadfs`; af
 - Classes/types PascalCase (`Lights`); methods/variables camelCase (`setBrightness`); macros UPPER_SNAKE_CASE (`LED_COUNT`).
 - Header include guards match the file name: `#ifndef Lights_h`.
 - Keep hardware/wifi settings in `include/config.h`, not scattered in `src/`.
-- Web UI text is Danish; keep JSON API keys (`mode`, `color`, `brightness`, `bpm`) stable.
+- Web UI text is Danish; keep JSON API keys (`mode`, `color`, `brightness`, `bpm`, `alwaysOn`, `host`) stable.
 - No formatter/linter configured; match surrounding code.
 
 ## Testing Guidelines

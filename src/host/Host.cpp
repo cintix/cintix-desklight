@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <hal/usb_serial_jtag_ll.h>
 
 #include "Host.h"
 
@@ -52,4 +53,33 @@ void Host::update() {
 
 bool Host::isPresent() const {
     return present_;
+}
+
+// ---------------------------------------------------------------------------
+// Diagnostics (see /api/debug).
+// ---------------------------------------------------------------------------
+bool Host::pluggedNow() const {
+    return Serial.isPlugged();
+}
+
+uint32_t Host::sofIndex() const {
+    return USB_SERIAL_JTAG.fram_num.sof_frame_index;
+}
+
+// A live USB host sends an SOF every 1 ms and each one advances the frame
+// index, so a change between two samples proves a host is talking to us. The
+// core's tick hook consumes the SOF interrupt bit every millisecond, which
+// makes sampling that bit a race - this register is left alone.
+bool Host::sofMoving() const {
+    const uint32_t before = USB_SERIAL_JTAG.fram_num.sof_frame_index;
+    delay(10);
+    return USB_SERIAL_JTAG.fram_num.sof_frame_index != before;
+}
+
+uint32_t Host::usbIntRaw() const {
+    return USB_SERIAL_JTAG.int_raw.val;
+}
+
+uint32_t Host::usbIntEna() const {
+    return USB_SERIAL_JTAG.int_ena.val;
 }
