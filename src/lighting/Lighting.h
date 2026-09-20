@@ -14,21 +14,24 @@ struct LightingState {
     uint32_t    color;      // 0xRRGGBB
     uint8_t     brightness; // 0..100 (%)
     uint8_t     bpm;        // 60..200 (beats per minute)
+    bool        alwaysOn;   // run even when no host PC is present
 };
 
 class Lighting {
 public:
     Lighting();
 
-    void begin();                 // initialise driver, restore persisted settings
-    void setOnline(bool online);  // LEDs only run while online (indicator)
-    void update(uint32_t nowMs);  // render + debounced save (~60x/sec)
+    void begin();                      // initialise driver, restore persisted settings
+    void setOnline(bool online);       // LEDs only run while online (indicator)
+    void setHostPresent(bool present); // ...and only while a host PC drives the USB link
+    void update(uint32_t nowMs);       // render + debounced save (~60x/sec)
 
     // Controls. Values are validated/clamped inside the module.
     void setMode(const char* mode);    // "off" | "solid" | "rainbow" | "beat"
     void setColor(uint32_t rgb);       // 0xRRGGBB
     void setBrightness(uint8_t pct);   // 0..100
     void setBpm(uint8_t bpm);          // clamped to 60..200
+    void setAlwaysOn(bool on);         // persisted override: run without a host PC
 
     LightingState state() const;
 

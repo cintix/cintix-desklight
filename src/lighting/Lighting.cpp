@@ -71,6 +71,8 @@ struct Lighting::Impl {
     uint8_t hue = 0;
 
     bool     online = false;      // light only runs while online
+    bool     hostPresent = true;  // a host PC is driving the USB link
+    bool     alwaysOn = false;    // override: ignore host absence
     bool     dark = true;         // LEDs currently forced off
     uint32_t lastFrameMs = 0;
 
@@ -122,10 +124,12 @@ void Lighting::loadConfig() {
     if (parseHexColor(doc["color"] | "#6a0a7f", c)) m->color = c;
     m->brightnessPct = (uint8_t)constrain((int)(doc["brightness"] | 80), 0, 100);
     m->bpm = (uint8_t)constrain((int)(doc["bpm"] | 124), 60, 200);
+    m->alwaysOn = doc["alwaysOn"] | false;
 
-    Serial.printf("Config loaded: mode=%s color=%s brightness=%d bpm=%d\n",
+    Serial.printf("Config loaded: mode=%s color=%s brightness=%d bpm=%d "
+                  "alwaysOn=%d\n",
                   modeName(m->mode), colorHex(m->color).c_str(),
-                  m->brightnessPct, m->bpm);
+                  m->brightnessPct, m->bpm, m->alwaysOn);
 }
 
 void Lighting::saveConfig() {
@@ -135,6 +139,7 @@ void Lighting::saveConfig() {
     doc["color"] = colorHex(m->color);
     doc["brightness"] = m->brightnessPct;
     doc["bpm"] = m->bpm;
+    doc["alwaysOn"] = m->alwaysOn;
 
     String out;
     serializeJson(doc, out);
@@ -209,6 +214,10 @@ void Lighting::setOnline(bool online) {
     impl_->online = online;
 }
 
+void Lighting::setHostPresent(bool present) {
+    impl_->hostPresent = present;
+}
+
 void Lighting::update(uint32_t nowMs) {
     Impl* m = impl_;
 
@@ -218,9 +227,11 @@ void Lighting::update(uint32_t nowMs) {
         saveConfig();
     }
 
-    // Light gating: the strip only runs while online, so a dark strip is an
-    // unambiguous "not online" indicator.
-    if (m->online) {
+    // Light gating: the strip runs while online, and - unless the override is
+    // set - only while a host PC is actually driving the USB link. A switched
+    // off PC leaves 5 V on VBUS but no host, so the strip stays dark instead of
+    // burning all night.
+    if (m->online && (m->hostPresent || m->alwaysOn)) {
         m->dark = false;
         if (nowMs - m->lastFrameMs >= 16) {  // ~60 fps
             m->lastFrameMs = nowMs;
@@ -269,6 +280,13 @@ void Lighting::setBpm(uint8_t bpm) {
     m->markDirty();
 }
 
+void Lighting::setAlwaysOn(bool on) {
+    Impl* m = impl_;
+    if (on == m->alwaysOn) return;
+    m->alwaysOn = on;
+    m->markDirty();
+}
+
 LightingState Lighting::state() const {
     Impl* m = impl_;
     LightingState s;
@@ -276,5 +294,6 @@ LightingState Lighting::state() const {
     s.color = rgbToUint32(m->color);
     s.brightness = m->brightnessPct;
     s.bpm = m->bpm;
+    s.alwaysOn = m->alwaysOn;
     return s;
 }

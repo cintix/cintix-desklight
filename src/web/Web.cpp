@@ -2,6 +2,7 @@
 #include <WebServer.h>
 #include <LittleFS.h>
 
+#include "host/Host.h"
 #include "lighting/Lighting.h"
 #include "network/Network.h"
 #include "Web.h"
@@ -13,6 +14,7 @@ struct Web::Impl {
     WebServer* server = nullptr;
     Lighting*  lighting = nullptr;
     Network*   network = nullptr;
+    Host*      host = nullptr;
 };
 
 Web::Web() : impl_(new Impl) {}
@@ -38,6 +40,15 @@ bool Web::parseHexColor(const String& s, uint32_t& rgb) {
     const long v = strtol(h.c_str(), nullptr, 16);
     rgb = (uint32_t)v;
     return true;
+}
+
+// Accepts the spellings a checkbox round-trips as well as the obvious ones;
+// toInt() would read "true" as 0.
+bool Web::parseBool(const String& s) {
+    String v = s;
+    v.trim();
+    v.toLowerCase();
+    return v == "true" || v == "1" || v == "on";
 }
 
 String Web::contentTypeFor(const String& path) const {
@@ -68,6 +79,8 @@ String Web::stateJson() const {
     return String("{") +
            "\"ip\":\"" + ip + "\"," +
            "\"ap\":" + (impl_->network->isOnline() ? "false" : "true") + "," +
+           "\"host\":" + (impl_->host->isPresent() ? "true" : "false") + "," +
+           "\"alwaysOn\":" + (s.alwaysOn ? "true" : "false") + "," +
            "\"mode\":\"" + s.mode + "\"," +
            "\"color\":\"" + colorHex(s.color) + "\"," +
            "\"brightness\":" + String(s.brightness) + "," +
@@ -108,6 +121,9 @@ void Web::handleControl() {
     if (s.hasArg("bpm")) {
         l.setBpm((uint8_t)s.arg("bpm").toInt());
     }
+    if (s.hasArg("alwaysOn")) {
+        l.setAlwaysOn(parseBool(s.arg("alwaysOn")));
+    }
 
     s.send(200, "application/json", stateJson());
 }
@@ -123,9 +139,10 @@ void Web::handleNotFound() {
 // ---------------------------------------------------------------------------
 // Public API.
 // ---------------------------------------------------------------------------
-void Web::begin(Lighting& lights, Network& network) {
+void Web::begin(Lighting& lights, Network& network, Host& host) {
     impl_->lighting = &lights;
     impl_->network = &network;
+    impl_->host = &host;
     impl_->server = new WebServer(80);
 
     WebServer& s = *impl_->server;

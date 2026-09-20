@@ -8,6 +8,7 @@
 
 #include <Arduino.h>  // String
 
+class Host;
 class Lighting;
 class Network;
 
@@ -15,7 +16,7 @@ class Web {
 public:
     Web();
 
-    void begin(Lighting& lights, Network& network);
+    void begin(Lighting& lights, Network& network, Host& host);
     void handle();  // serve pending HTTP requests (call from the main loop)
 
 private:
@@ -31,5 +32,6 @@ private:
     String contentTypeFor(const String& path) const;
     String stateJson() const;
     static bool parseHexColor(const String& s, uint32_t& rgb);
+    static bool parseBool(const String& s);
 };
 #endif
